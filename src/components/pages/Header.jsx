@@ -17,6 +17,10 @@ const Header = () => {
     const bbox = svgElement.getBBox();
     svgClone.setAttribute("width", bbox.width);
     svgClone.setAttribute("height", bbox.height);
+    svgClone.setAttribute(
+      "viewBox",
+      `${bbox.x} ${bbox.y} ${bbox.width} ${bbox.height}`
+    );
 
     // Convert SVG to string
     const svgData = new XMLSerializer().serializeToString(svgClone);
@@ -37,11 +41,14 @@ const Header = () => {
   return (
     <header className="flex justify-between items-center p-4 border-b dark:border-gray-700 dark:bg-gray-900 bg-white">
       <div className="flex items-center">
-        <h1 className="text-xl font-bold dark:text-white">
-          Wallet Transaction Visualizer
+        <h1 className="text-xl font-bold dark:text-white truncate">
+          <span className="hidden sm:inline">
+            Wallet Transaction Visualizer
+          </span>
+          <span className="sm:hidden">Wallet Visualizer</span>
         </h1>
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4">
         <button
           onClick={toggleTheme}
           className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
@@ -54,10 +61,11 @@ const Header = () => {
         </button>
         <button
           onClick={exportAsSVG}
-          className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-xs sm:text-sm"
         >
           <SaveIcon className="w-4 h-4" />
-          Save as SVG
+          <span className="hidden sm:inline">Save as SVG</span>
+          <span className="sm:hidden">Save</span>
         </button>
       </div>
     </header>

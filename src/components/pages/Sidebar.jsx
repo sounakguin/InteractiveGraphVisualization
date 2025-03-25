@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { addWalletAddress, setActiveTab } from "../store/graphSlice";
 import TransactionList from "./TransactionList";
+import { XIcon } from "../icons";
 
-const Sidebar = () => {
+const Sidebar = ({ onClose }) => {
   const dispatch = useDispatch();
   const [newAddress, setNewAddress] = useState("");
   const activeTab = useSelector((state) => state.graph.activeTab);
@@ -18,11 +19,21 @@ const Sidebar = () => {
   };
 
   return (
-    <div className="w-72 h-full border-r dark:border-gray-700 dark:bg-gray-900 bg-white flex flex-col">
-      <div className="p-4 border-b dark:border-gray-700">
-        <h2 className="text-lg font-semibold mb-2 dark:text-white">
+    <div className="w-80 h-full border-r dark:border-gray-700 dark:bg-gray-900 bg-white flex flex-col shadow-lg">
+      <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
+        <h2 className="text-lg font-semibold dark:text-white">
           Add Wallet Address:
         </h2>
+        {/* Close button for mobile */}
+        <button
+          className="md:hidden p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+          onClick={onClose}
+        >
+          <XIcon className="w-5 h-5 dark:text-white" />
+        </button>
+      </div>
+
+      <div className="p-4 border-b dark:border-gray-700">
         <div className="flex gap-2">
           <input
             type="text"

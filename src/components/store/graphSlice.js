@@ -103,6 +103,7 @@ const initialState = {
   ...processData(INITIAL_SEARCH_ADDRESS),
   activeTab: "inflows",
   highlightedNode: null,
+  nodePositions: {},
 };
 
 const graphSlice = createSlice({
@@ -127,13 +128,33 @@ const graphSlice = createSlice({
 
       // Check for potential connections with existing nodes
       // This is a simplified example - in a real app, you would fetch data for this address
-      // For now, we'll create a random connection to the main node
-      state.edges.push({
-        source: newAddress,
-        target: state.searchAddress,
-        amount: 0.1,
-        type: "inflow",
-      });
+
+      // For demonstration, we'll create a connection to a random existing node
+      // In a real app, this would be based on actual transaction data
+      const existingNodes = state.nodes.filter(
+        (node) => node.id !== newAddress && node.id !== state.searchAddress
+      );
+
+      if (existingNodes.length > 0) {
+        const randomNode =
+          existingNodes[Math.floor(Math.random() * existingNodes.length)];
+
+        // Create edge from new node to random node
+        state.edges.push({
+          source: newAddress,
+          target: randomNode.id,
+          amount: 0.1,
+          type: "inflow",
+        });
+      } else {
+        // If no other nodes exist, connect to main node
+        state.edges.push({
+          source: newAddress,
+          target: state.searchAddress,
+          amount: 0.1,
+          type: "inflow",
+        });
+      }
     },
     setActiveTab: (state, action) => {
       state.activeTab = action.payload;
@@ -144,10 +165,18 @@ const graphSlice = createSlice({
     resetHighlight: (state) => {
       state.highlightedNode = null;
     },
+    setNodePositions: (state, action) => {
+      state.nodePositions = action.payload;
+    },
   },
 });
 
-export const { addWalletAddress, setActiveTab, highlightNode, resetHighlight } =
-  graphSlice.actions;
+export const {
+  addWalletAddress,
+  setActiveTab,
+  highlightNode,
+  resetHighlight,
+  setNodePositions,
+} = graphSlice.actions;
 
 export default graphSlice.reducer;

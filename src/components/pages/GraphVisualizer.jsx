@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import ReactECharts from "echarts-for-react";
 import * as echarts from "echarts/core";
@@ -6,7 +6,7 @@ import { GraphChart } from "echarts/charts";
 import { CanvasRenderer } from "echarts/renderers";
 import { useTheme } from "../contexts/ThemeContext";
 import { ZoomInIcon, ZoomOutIcon, RefreshIcon } from "../icons";
-import { resetHighlight } from "../store/graphSlice";
+import { resetHighlight, highlightNode } from "../store/graphSlice";
 
 // Register the required components
 echarts.use([GraphChart, CanvasRenderer]);
@@ -19,84 +19,221 @@ const GraphVisualization = () => {
     (state) => state.graph
   );
 
-  const [option, setOption] = useState({});
-
+  // Reset highlight after a delay
   useEffect(() => {
-    if (!nodes.length) return;
-
-    // Reset highlight when component re-renders
     if (highlightedNode) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         dispatch(resetHighlight());
       }, 3000);
+      return () => clearTimeout(timer);
     }
+  }, [highlightedNode, dispatch]);
 
-    // Prepare nodes and edges for ECharts
-    const graphNodes = nodes.map((node) => {
-      const isMain = node.id === searchAddress;
-      const isHighlighted = node.id === highlightedNode;
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (chartRef.current) {
+        chartRef.current.getEchartsInstance().resize();
+      }
+    };
 
-      let symbolSize = 40;
-      if (isMain) symbolSize = 50;
-      if (isHighlighted) symbolSize = 60;
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
-      const itemStyle = {
-        color: getNodeColor(node.type, node.entity),
-        borderWidth: isHighlighted ? 3 : 0,
-        borderColor: "#facc15",
-      };
+  // Prepare the ECharts option
+  const getOption = () => {
+    if (!nodes.length) return {};
 
-      return {
-        id: node.id,
-        name: formatAddress(node.id),
-        value: node.amount,
-        symbolSize,
-        itemStyle,
+    // Check if we're on a small screen
+    const isSmallScreen = window.innerWidth < 768;
+
+    // Separate nodes into categories: main, inflow, outflow
+    const mainNode = nodes.find((node) => node.id === searchAddress);
+    const inflowNodes = nodes.filter(
+      (node) =>
+        node.id !== searchAddress &&
+        edges.some(
+          (edge) => edge.target === searchAddress && edge.source === node.id
+        )
+    );
+    const outflowNodes = nodes.filter(
+      (node) =>
+        node.id !== searchAddress &&
+        edges.some(
+          (edge) => edge.source === searchAddress && edge.target === node.id
+        )
+    );
+
+    // Prepare nodes for ECharts
+    const graphNodes = [];
+
+    // Calculate center position based on screen size
+    const centerX = isSmallScreen ? window.innerWidth / 2 : 500;
+    const centerY = isSmallScreen ? window.innerHeight / 3 : 300;
+
+    // Calculate spacing based on screen size
+    const horizontalSpacing = isSmallScreen ? 120 : 200;
+    const verticalSpacing = isSmallScreen ? 60 : 100;
+
+    // Add main node
+    if (mainNode) {
+      graphNodes.push({
+        id: mainNode.id,
+        name: formatAddress(mainNode.id),
+        value: mainNode.amount,
+        category: 0, // Main node category
+        symbolSize:
+          highlightedNode === mainNode.id ? 60 : isSmallScreen ? 40 : 50,
+        x: centerX, // Center position
+        y: centerY,
+        fixed: true, // Fix position
         label: {
           show: true,
           position: "bottom",
-          formatter: (params) => {
-            return [
-              `{a|${formatAddress(params.name)}}`,
-              `{b|${node.entity || "Unknown"}}`,
-            ].join("\n");
-          },
+          formatter: [
+            `{a|${formatAddress(mainNode.id)}}`,
+            `{b|${mainNode.entity || "Unknown"}}`,
+          ].join("\n"),
           rich: {
             a: {
               color: isDarkMode ? "#d1d5db" : "#4b5563",
-              fontSize: 10,
+              fontSize: isSmallScreen ? 8 : 10,
               lineHeight: 16,
             },
             b: {
               color: isDarkMode ? "#9ca3af" : "#6b7280",
-              fontSize: 9,
+              fontSize: isSmallScreen ? 7 : 9,
               lineHeight: 14,
             },
           },
         },
-      };
+        itemStyle: {
+          color: "#818cf8", // Purple for main node
+          borderWidth: highlightedNode === mainNode.id ? 3 : 0,
+          borderColor: "#facc15",
+        },
+      });
+    }
+
+    // Add inflow nodes (positioned to the left of main node)
+    inflowNodes.forEach((node, index) => {
+      graphNodes.push({
+        id: node.id,
+        name: formatAddress(node.id),
+        value: node.amount,
+        category: 1, // Inflow category
+        symbolSize: highlightedNode === node.id ? 60 : isSmallScreen ? 30 : 40,
+        x: centerX - horizontalSpacing, // Left of main node
+        y:
+          centerY -
+          (inflowNodes.length * verticalSpacing) / 2 +
+          index * verticalSpacing, // Staggered vertically
+        label: {
+          show: true,
+          position: "left",
+          formatter: [
+            `{a|${formatAddress(node.id)}}`,
+            `{b|${node.entity || "Unknown"}}`,
+          ].join("\n"),
+          rich: {
+            a: {
+              color: isDarkMode ? "#d1d5db" : "#4b5563",
+              fontSize: isSmallScreen ? 8 : 10,
+              lineHeight: 16,
+            },
+            b: {
+              color: isDarkMode ? "#9ca3af" : "#6b7280",
+              fontSize: isSmallScreen ? 7 : 9,
+              lineHeight: 14,
+            },
+          },
+        },
+        itemStyle: {
+          color: getNodeColor(node.type, node.entity),
+          borderWidth: highlightedNode === node.id ? 3 : 0,
+          borderColor: "#facc15",
+        },
+      });
     });
 
-    const graphEdges = edges.map((edge) => {
+    // Add outflow nodes (positioned to the right of main node)
+    outflowNodes.forEach((node, index) => {
+      graphNodes.push({
+        id: node.id,
+        name: formatAddress(node.id),
+        value: node.amount,
+        category: 2, // Outflow category
+        symbolSize: highlightedNode === node.id ? 60 : isSmallScreen ? 30 : 40,
+        x: centerX + horizontalSpacing, // Right of main node
+        y:
+          centerY -
+          (outflowNodes.length * verticalSpacing) / 2 +
+          index * verticalSpacing, // Staggered vertically
+        label: {
+          show: true,
+          position: "right",
+          formatter: [
+            `{a|${formatAddress(node.id)}}`,
+            `{b|${node.entity || "Unknown"}}`,
+          ].join("\n"),
+          rich: {
+            a: {
+              color: isDarkMode ? "#d1d5db" : "#4b5563",
+              fontSize: isSmallScreen ? 8 : 10,
+              lineHeight: 16,
+            },
+            b: {
+              color: isDarkMode ? "#9ca3af" : "#6b7280",
+              fontSize: isSmallScreen ? 7 : 9,
+              lineHeight: 14,
+            },
+          },
+        },
+        itemStyle: {
+          color: getNodeColor(node.type, node.entity),
+          borderWidth: highlightedNode === node.id ? 3 : 0,
+          borderColor: "#facc15",
+        },
+      });
+    });
+
+    // Prepare edges for ECharts
+    const graphLinks = edges.map((edge) => {
+      const isHighlighted =
+        highlightedNode &&
+        (edge.source === highlightedNode || edge.target === highlightedNode);
+
       return {
         source: edge.source,
         target: edge.target,
         value: edge.amount,
         label: {
-          show: true,
+          show: !isSmallScreen, // Hide labels on small screens
           formatter: `${edge.amount.toFixed(4)} BTC`,
-          fontSize: 10,
+          fontSize: isSmallScreen ? 8 : 10,
           color: isDarkMode ? "#9ca3af" : "#6b7280",
         },
         lineStyle: {
-          width: Math.max(1, Math.min(edge.amount * 0.5, 5)),
+          width: Math.max(
+            1,
+            Math.min(edge.amount * 0.5, isSmallScreen ? 3 : 5)
+          ),
           color: isDarkMode ? "#4b5563" : "#9ca3af",
           curveness: 0.2,
+          opacity: highlightedNode ? (isHighlighted ? 1 : 0.3) : 1,
         },
       };
     });
 
-    const newOption = {
+    // Define categories for legend
+    const categories = [
+      { name: "Main Wallet" },
+      { name: "Inflow" },
+      { name: "Outflow" },
+    ];
+
+    return {
       backgroundColor: isDarkMode ? "#111827" : "#ffffff",
       tooltip: {
         trigger: "item",
@@ -104,13 +241,22 @@ const GraphVisualization = () => {
           if (params.dataType === "node") {
             const node = nodes.find((n) => n.id === params.data.id);
             return `
-              <div class="font-medium">${node.entity || "Unknown"}</div>
-              <div class="text-xs">${node.id}</div>
-              <div class="mt-1">Amount: ${node.amount.toFixed(8)} BTC</div>
+              <div style="font-weight: bold">${node.entity || "Unknown"}</div>
+              <div style="font-size: 12px">${node.id}</div>
+              <div style="margin-top: 5px">Amount: ${node.amount.toFixed(
+                8
+              )} BTC</div>
             `;
           } else if (params.dataType === "edge") {
             return `Transaction: ${params.data.value.toFixed(8)} BTC`;
           }
+        },
+      },
+      legend: {
+        show: !isSmallScreen, // Hide legend on small screens
+        data: categories.map((a) => a.name),
+        textStyle: {
+          color: isDarkMode ? "#d1d5db" : "#4b5563",
         },
       },
       animationDurationUpdate: 1500,
@@ -118,32 +264,25 @@ const GraphVisualization = () => {
       series: [
         {
           type: "graph",
-          layout: "force",
+          layout: "none", // Use our custom layout
           data: graphNodes,
-          edges: graphEdges,
+          links: graphLinks,
+          categories: categories,
           roam: true,
           draggable: true,
-          label: {
-            show: true,
-          },
-          force: {
-            repulsion: 500,
-            gravity: 0.1,
-            edgeLength: 200,
-            friction: 0.6,
-          },
+          focusNodeAdjacency: true,
+          edgeSymbol: ["none", "arrow"],
+          edgeSymbolSize: isSmallScreen ? 6 : 8,
           emphasis: {
             focus: "adjacency",
             lineStyle: {
-              width: 4,
+              width: isSmallScreen ? 3 : 4,
             },
           },
         },
       ],
     };
-
-    setOption(newOption);
-  }, [nodes, edges, isDarkMode, highlightedNode, searchAddress, dispatch]);
+  };
 
   const getNodeColor = (type, entity) => {
     if (type === "main") return "#818cf8"; // Main node (purple)
@@ -161,13 +300,25 @@ const GraphVisualization = () => {
     )}`;
   };
 
+  const handleChartEvents = {
+    click: (params) => {
+      if (params.dataType === "node") {
+        dispatch(highlightNode(params.data.id));
+      }
+    },
+  };
+
   const handleZoomIn = () => {
     const chartInstance = chartRef.current?.getEchartsInstance();
     if (chartInstance) {
-      chartInstance.dispatchAction({
-        type: "dataZoom",
-        start: 20,
-        end: 80,
+      const option = chartInstance.getOption();
+      const zoom = option.series[0].zoom || 1;
+      chartInstance.setOption({
+        series: [
+          {
+            zoom: zoom * 1.2,
+          },
+        ],
       });
     }
   };
@@ -175,10 +326,14 @@ const GraphVisualization = () => {
   const handleZoomOut = () => {
     const chartInstance = chartRef.current?.getEchartsInstance();
     if (chartInstance) {
-      chartInstance.dispatchAction({
-        type: "dataZoom",
-        start: 0,
-        end: 100,
+      const option = chartInstance.getOption();
+      const zoom = option.series[0].zoom || 1;
+      chartInstance.setOption({
+        series: [
+          {
+            zoom: zoom * 0.8,
+          },
+        ],
       });
     }
   };
@@ -193,13 +348,14 @@ const GraphVisualization = () => {
   };
 
   return (
-    <div className="relative flex-1 overflow-hidden">
+    <div className="relative flex-1 h-full overflow-hidden">
       <ReactECharts
         ref={chartRef}
-        option={option}
+        option={getOption()}
         style={{ height: "100%", width: "100%" }}
         className="echarts-for-react"
         opts={{ renderer: "svg" }}
+        onEvents={handleChartEvents}
       />
 
       <div className="zoom-controls">
